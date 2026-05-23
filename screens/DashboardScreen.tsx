@@ -15,6 +15,8 @@ import { supabase } from "../lib/supabase";
 
 import CreateGroupScreen from "./CreateGroupScreen";
 
+import GroupScreen from "./GroupScreen";
+
 type Group = {
     id: string;
     name: string;
@@ -24,6 +26,9 @@ export default function DashboardScreen() {
     const [groups, setGroups] = useState<
         Group[]
     >([]);
+
+    const [selectedGroup, setSelectedGroup] =
+        useState<Group | null>(null);
 
     async function handleLogout() {
         await supabase.auth.signOut();
@@ -47,12 +52,25 @@ export default function DashboardScreen() {
         fetchGroups();
     }, []);
 
+    if (selectedGroup) {
+        return (
+            <GroupScreen
+                groupId={selectedGroup.id}
+                groupName={selectedGroup.name}
+                onBack={() =>
+                    setSelectedGroup(null)
+                }
+            />
+        );
+    }
+
     return (
         <SafeAreaView
             style={{
                 flex: 1,
                 backgroundColor: "black",
                 padding: 24,
+                paddingTop: 60,
             }}
         >
             <View
@@ -85,6 +103,9 @@ export default function DashboardScreen() {
                 }}
                 renderItem={({ item }) => (
                     <View
+                        onTouchEnd={() =>
+                            setSelectedGroup(item)
+                        }
                         style={{
                             padding: 16,
                             borderWidth: 1,
