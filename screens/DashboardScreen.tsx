@@ -1,8 +1,11 @@
 import {
+    Button,
     SafeAreaView,
     Text,
-    Button,
+    View,
 } from "react-native";
+
+import CreateGroupScreen from "./CreateGroupScreen";
 
 import { supabase } from "../lib/supabase";
 
@@ -15,26 +18,32 @@ export default function DashboardScreen() {
         <SafeAreaView
             style={{
                 flex: 1,
-                justifyContent: "center",
-                alignItems: "center",
                 backgroundColor: "black",
             }}
         >
-            <Text
+            <View
                 style={{
-                    color: "white",
-                    fontSize: 32,
-                    fontWeight: "bold",
-                    marginBottom: 24,
+                    padding: 24,
                 }}
             >
-                Dashboard
-            </Text>
+                <Text
+                    style={{
+                        color: "white",
+                        fontSize: 32,
+                        fontWeight: "bold",
+                        marginBottom: 16,
+                    }}
+                >
+                    Divvy
+                </Text>
 
-            <Button
-                title="Logout"
-                onPress={handleLogout}
-            />
+                <Button
+                    title="Logout"
+                    onPress={handleLogout}
+                />
+            </View>
+
+            <CreateGroupScreen />
         </SafeAreaView>
     );
 }
