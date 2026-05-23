@@ -23,6 +23,9 @@ type Props = {
 
 type Member = {
     user_id: string;
+    profiles: {
+        email: string;
+    }[];
 };
 
 export default function GroupScreen({
@@ -34,87 +37,72 @@ export default function GroupScreen({
         Member[]
     >([]);
 
-    const [title, setTitle] = useState("");
-
-    const [amount, setAmount] = useState("");
+    const [email, setEmail] = useState("");
 
     async function fetchMembers() {
         const { data, error } =
             await supabase
                 .from("group_members")
-                .select("*")
+                .select(`
+          user_id,
+          profiles (
+            email
+          )
+        `)
                 .eq("group_id", groupId);
 
         if (!error && data) {
-            setMembers(data);
+            setMembers(data as Member[]);
         }
     }
 
-    async function handleAddExpense() {
+    async function handleAddMember() {
         try {
             const {
-                data: { user },
-            } = await supabase.auth.getUser();
+                data: profile,
+                error,
+            } = await supabase
+                .from("profiles")
+                .select("*")
+                .eq("email", email)
+                .single();
 
-            if (!user) {
-                return;
-            }
-
-            const totalAmount =
-                Number(amount);
-
-            const splitAmount = Math.floor(
-                totalAmount / members.length
-            );
-
-            const { data, error } =
-                await supabase
-                    .from("expenses")
-                    .insert([
-                        {
-                            group_id: groupId,
-                            paid_by: user.id,
-                            title,
-                            amount: totalAmount,
-                            split_type: "equal",
-                        },
-                    ])
-                    .select()
-                    .single();
-
-            if (error) {
-                Alert.alert(error.message);
+            if (error || !profile) {
+                Alert.alert(
+                    "User not found"
+                );
 
                 return;
             }
-
-            const splits = members.map(
-                (member) => ({
-                    expense_id: data.id,
-                    user_id: member.user_id,
-                    amount: splitAmount,
-                })
-            );
 
             const {
-                error: splitError,
+                error: memberError,
             } = await supabase
-                .from("expense_splits")
-                .insert(splits);
+                .from("group_members")
+                .insert([
+                    {
+                        group_id: groupId,
+                        user_id: profile.id,
+                    },
+                ]);
 
-            if (splitError) {
-                Alert.alert(splitError.message);
+            if (memberError) {
+                Alert.alert(
+                    memberError.message
+                );
 
                 return;
             }
 
-            Alert.alert("Expense added");
+            Alert.alert("Member added");
 
-            setTitle("");
+            setEmail("");
 
-            setAmount("");
+            fetchMembers();
         } catch (error) {
-            Alert.alert("Something went wrong");
+            Alert.alert(
+                "Something went wrong"
+            );
         }
     }
 
@@ -154,10 +142,10 @@ export default function GroupScreen({
             </Text>
 
             <TextInput
-                placeholder="Dinner"
+                placeholder="friend@email.com"
                 placeholderTextColor="gray"
-                value={title}
-                onChangeText={setTitle}
+                value={email}
+                onChangeText={setEmail}
                 style={{
                     borderWidth: 1,
                     borderColor: "gray",
@@ -168,25 +156,9 @@ export default function GroupScreen({
                 }}
             />
 
-            <TextInput
-                placeholder="Amount"
-                placeholderTextColor="gray"
-                keyboardType="numeric"
-                value={amount}
-                onChangeText={setAmount}
-                style={{
-                    borderWidth: 1,
-                    borderColor: "gray",
-                    padding: 14,
-                    borderRadius: 12,
-                    marginBottom: 24,
-                    color: "white",
-                }}
-            />
-
             <Button
-                title="Add Expense"
-                onPress={handleAddExpense}
+                title="Add Member"
+                onPress={handleAddMember}
             />
 
             <View
@@ -217,7 +189,9 @@ export default function GroupScreen({
                                 marginBottom: 8,
                             }}
                         >
-                            {item.user_id}
+                            {
+                                item.profiles?.[0]?.email
+                            }
                         </Text>
                     )}
                 />
