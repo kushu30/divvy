@@ -29,16 +29,22 @@ export default function CreateGroupScreen() {
                 return;
             }
 
+            console.log("USER ID:", user.id);
+
             const { data, error } =
                 await supabase
                     .from("groups")
-                    .insert({
-                        name,
-                        created_by: user.id,
-                    })
+                    .insert([
+                        {
+                            name: name,
+                            created_by: user.id,
+                        },
+                    ])
                     .select()
                     .single();
 
+            console.log(error);
+            
             if (error) {
                 Alert.alert(error.message);
 

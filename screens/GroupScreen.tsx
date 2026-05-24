@@ -22,10 +22,8 @@ type Props = {
 };
 
 type Member = {
-    user_id: string;
-    profiles: {
-        email: string;
-    }[];
+    id: string;
+    email: string;
 };
 
 export default function GroupScreen({
@@ -40,19 +38,55 @@ export default function GroupScreen({
     const [email, setEmail] = useState("");
 
     async function fetchMembers() {
-        const { data, error } =
-            await supabase
+        try {
+            const {
+                data: memberRows,
+                error,
+            } = await supabase
                 .from("group_members")
-                .select(`
-          user_id,
-          profiles (
-            email
-          )
-        `)
+                .select("user_id")
                 .eq("group_id", groupId);
 
-        if (!error && data) {
-            setMembers(data as Member[]);
+            if (error || !memberRows) {
+                console.log(error);
+
+                return;
+            }
+
+            console.log(
+                "MEMBER ROWS:",
+                memberRows
+            );
+
+            const userIds = memberRows.map(
+                (member) => member.user_id
+            );
+
+            const {
+                data: profiles,
+                error: profileError,
+            } = await supabase
+                .from("profiles")
+                .select("id,email")
+                .in("id", userIds);
+
+            console.log(
+                "PROFILES:",
+                profiles
+            );
+
+            if (
+                profileError ||
+                !profiles
+            ) {
+                console.log(profileError);
+
+                return;
+            }
+
+            setMembers(profiles);
+        } catch (error) {
+            console.log(error);
         }
     }
 
@@ -70,6 +104,23 @@ export default function GroupScreen({
             if (error || !profile) {
                 Alert.alert(
                     "User not found"
+                );
+
+                return;
+            }
+
+            const {
+                data: existingMember,
+            } = await supabase
+                .from("group_members")
+                .select("*")
+                .eq("group_id", groupId)
+                .eq("user_id", profile.id)
+                .single();
+
+            if (existingMember) {
+                Alert.alert(
+                    "Member already exists"
                 );
 
                 return;
@@ -95,7 +146,7 @@ export default function GroupScreen({
             }
 
             Alert.alert("Member added");
-
+            await fetchMembers();
             setEmail("");
 
             fetchMembers();
@@ -180,7 +231,7 @@ export default function GroupScreen({
                 <FlatList
                     data={members}
                     keyExtractor={(item) =>
-                        item.user_id
+                        item.id
                     }
                     renderItem={({ item }) => (
                         <Text
@@ -189,9 +240,7 @@ export default function GroupScreen({
                                 marginBottom: 8,
                             }}
                         >
-                            {
-                                item.profiles?.[0]?.email
-                            }
+                            {item.email}
                         </Text>
                     )}
                 />
