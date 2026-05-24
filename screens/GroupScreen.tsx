@@ -30,6 +30,7 @@ type Expense = {
     title: string;
     amount: number;
     paid_by: string;
+    split_type: string;
 };
 
 export default function GroupScreen({
@@ -47,6 +48,11 @@ export default function GroupScreen({
     const [balances, setBalances] =
         useState<string[]>([]);
 
+    const [
+        currentUserId,
+        setCurrentUserId,
+    ] = useState("");
+
     const [email, setEmail] =
         useState("");
 
@@ -56,18 +62,65 @@ export default function GroupScreen({
     const [amount, setAmount] =
         useState("");
 
+    const [
+        settlementAmount,
+        setSettlementAmount,
+    ] = useState("");
+
+    const [
+        editingExpenseId,
+        setEditingExpenseId,
+    ] = useState("");
+
+    const [
+        editingTitle,
+        setEditingTitle,
+    ] = useState("");
+
+    const [
+        editingAmount,
+        setEditingAmount,
+    ] = useState("");
+
     async function refreshData() {
         try {
             const {
+                data: { user },
+            } = await supabase.auth.getUser();
+
+            if (user) {
+                setCurrentUserId(user.id);
+
+                console.log(
+                    "CURRENT USER:",
+                    user.id
+                );
+            }
+
+            const {
                 data: memberRows,
+                error: memberError,
             } = await supabase
                 .from("group_members")
                 .select("user_id")
                 .eq("group_id", groupId);
 
-            if (!memberRows) {
+            if (
+                memberError ||
+                !memberRows
+            ) {
+                console.log(
+                    "MEMBER FETCH ERROR:",
+                    memberError
+                );
+
                 return;
             }
+
+            console.log(
+                "MEMBER ROWS:",
+                memberRows
+            );
 
             const userIds = memberRows.map(
                 (member) => member.user_id
@@ -75,13 +128,32 @@ export default function GroupScreen({
 
             const {
                 data: profiles,
+                error: profileError,
             } = await supabase
                 .from("profiles")
                 .select("id,email")
                 .in("id", userIds);
 
+            if (
+                profileError ||
+                !profiles
+            ) {
+                console.log(
+                    "PROFILE ERROR:",
+                    profileError
+                );
+
+                return;
+            }
+
+            console.log(
+                "PROFILES:",
+                profiles
+            );
+
             const {
                 data: expensesData,
+                error: expenseError,
             } = await supabase
                 .from("expenses")
                 .select("*")
@@ -91,17 +163,30 @@ export default function GroupScreen({
                 });
 
             if (
-                !profiles ||
+                expenseError ||
                 !expensesData
             ) {
+                console.log(
+                    "EXPENSE ERROR:",
+                    expenseError
+                );
+
                 return;
             }
+
+            console.log(
+                "EXPENSES:",
+                expensesData
+            );
 
             setMembers(profiles);
 
             setExpenses(expensesData);
         } catch (error) {
-            console.log(error);
+            console.log(
+                "REFRESH ERROR:",
+                error
+            );
         }
     }
 
@@ -267,13 +352,254 @@ export default function GroupScreen({
         }
     }
 
+    async function handleSettleUp() {
+        try {
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
+
+            if (!user) {
+                return;
+            }
+
+            const amount =
+                Number(settlementAmount);
+
+            if (!amount) {
+                Alert.alert(
+                    "Enter settlement amount"
+                );
+
+                return;
+            }
+
+            const {
+                error,
+            } = await supabase
+                .from("expenses")
+                .insert([
+                    {
+                        title: "Settlement",
+                        amount: amount,
+                        paid_by: user.id,
+                        group_id: groupId,
+                        split_type: "settlement",
+                    },
+                ]);
+
+            if (error) {
+                console.log(
+                    "SETTLEMENT ERROR:",
+                    error
+                );
+
+                Alert.alert(
+                    "Settlement failed"
+                );
+
+                return;
+            }
+
+            setSettlementAmount("");
+
+            Alert.alert(
+                "Settlement added"
+            );
+
+            await refreshData();
+        } catch (error) {
+            console.log(error);
+
+            Alert.alert(
+                "Something went wrong"
+            );
+        }
+    }
+
+    async function handleDeleteExpense(
+        expenseId: string
+    ) {
+        try {
+            console.log(
+                "DELETING EXPENSE:",
+                expenseId
+            );
+
+            const {
+                error: splitError,
+            } = await supabase
+                .from("expense_splits")
+                .delete()
+                .eq(
+                    "expense_id",
+                    expenseId
+                );
+
+            if (splitError) {
+                console.log(
+                    "DELETE SPLIT ERROR:",
+                    splitError
+                );
+
+                Alert.alert(
+                    "Failed to delete splits"
+                );
+
+                return;
+            }
+
+            const {
+                error,
+            } = await supabase
+                .from("expenses")
+                .delete()
+                .eq("id", expenseId);
+
+            if (error) {
+                console.log(
+                    "DELETE ERROR:",
+                    error
+                );
+
+                Alert.alert(
+                    "You can only delete your own expenses"
+                );
+
+                return;
+            }
+
+            Alert.alert(
+                "Expense deleted"
+            );
+
+            await refreshData();
+        } catch (error) {
+            console.log(error);
+
+            Alert.alert(
+                "Something went wrong"
+            );
+        }
+    }
+
+    async function handleEditExpense() {
+        try {
+            if (
+                !editingExpenseId
+            ) {
+                return;
+            }
+
+            const updatedAmount =
+                Number(editingAmount);
+
+            if (
+                !editingTitle ||
+                !updatedAmount
+            ) {
+                Alert.alert(
+                    "Invalid values"
+                );
+
+                return;
+            }
+
+            const {
+                error,
+            } = await supabase
+                .from("expenses")
+                .update({
+                    title: editingTitle,
+                    amount: updatedAmount,
+                })
+                .eq(
+                    "id",
+                    editingExpenseId
+                );
+            const splitAmount =
+                updatedAmount /
+                members.length;
+
+            const {
+                error: splitError,
+            } = await supabase
+                .from("expense_splits")
+                .update({
+                    amount: splitAmount,
+                })
+                .eq(
+                    "expense_id",
+                    editingExpenseId
+                );
+
+            if (splitError) {
+                console.log(
+                    splitError
+                );
+
+                Alert.alert(
+                    "Failed to update splits"
+                );
+
+                return;
+            }
+            if (error) {
+                console.log(error);
+
+                Alert.alert(
+                    "Failed to edit expense"
+                );
+
+                return;
+            }
+
+            Alert.alert(
+                "Expense updated"
+            );
+
+            setEditingExpenseId("");
+
+            setEditingTitle("");
+
+            setEditingAmount("");
+
+            await refreshData();
+
+            setExpenses((prev) =>
+                prev.map((expense) => {
+                    if (
+                        expense.id ===
+                        editingExpenseId
+                    ) {
+                        return {
+                            ...expense,
+                            title:
+                                editingTitle,
+                            amount:
+                                updatedAmount,
+                        };
+                    }
+
+                    return expense;
+                })
+            );
+        } catch (error) {
+            console.log(error);
+
+            Alert.alert(
+                "Something went wrong"
+            );
+        }
+    }
+
     useEffect(() => {
         refreshData();
     }, [groupId]);
 
     useEffect(() => {
         if (
-            members.length === 0
+            members.length === 0 ||
+            !currentUserId
         ) {
             setBalances([]);
 
@@ -290,6 +616,27 @@ export default function GroupScreen({
         });
 
         expenses.forEach((expense) => {
+            console.log(
+                "PROCESSING EXPENSE:",
+                expense
+            );
+
+            if (
+                expense.split_type ===
+                "settlement"
+            ) {
+                balancesMap[
+                    expense.paid_by
+                ] += expense.amount;
+
+                console.log(
+                    "SETTLEMENT ADDED:",
+                    expense.amount
+                );
+
+                return;
+            }
+
             const splitAmount =
                 expense.amount /
                 members.length;
@@ -310,47 +657,57 @@ export default function GroupScreen({
             });
         });
 
-        const result: string[] = [];
+        console.log(
+            "BALANCES MAP:",
+            balancesMap
+        );
 
-        const creditors =
-            members.filter(
+        const currentBalance =
+            balancesMap[currentUserId];
+
+        console.log(
+            "CURRENT USER BALANCE:",
+            currentBalance
+        );
+
+        const otherMember =
+            members.find(
                 (member) =>
-                    balancesMap[
-                    member.id
-                    ] > 0
+                    member.id !==
+                    currentUserId
             );
 
-        const debtors =
-            members.filter(
-                (member) =>
-                    balancesMap[
-                    member.id
-                    ] < 0
-            );
+        if (!otherMember) {
+            setBalances([]);
 
-        for (const debtor of debtors) {
-            const creditor =
-                creditors[0];
-
-            if (!creditor) {
-                continue;
-            }
-
-            const amount = Math.abs(
-                balancesMap[
-                debtor.id
-                ]
-            );
-
-            if (amount > 0) {
-                result.push(
-                    `${debtor.email} owes ${creditor.email} ₹${amount.toFixed(0)}`
-                );
-            }
+            return;
         }
 
+        const result: string[] = [];
+
+        if (currentBalance > 0) {
+            result.push(
+                `You have to receive from ${otherMember.email} ₹${currentBalance.toFixed(0)}`
+            );
+        }
+
+        if (currentBalance < 0) {
+            result.push(
+                `You have to give ${otherMember.email} ₹${Math.abs(currentBalance).toFixed(0)}`
+            );
+        }
+
+        console.log(
+            "FINAL BALANCES:",
+            result
+        );
+
         setBalances(result);
-    }, [members, expenses]);
+    }, [
+        members,
+        expenses,
+        currentUserId,
+    ]);
 
     return (
         <ScrollView
@@ -515,8 +872,91 @@ export default function GroupScreen({
                         </Text>
                     ))
                 )}
-            </View>
 
+                <TextInput
+                    placeholder="Settlement Amount"
+                    placeholderTextColor="gray"
+                    keyboardType="numeric"
+                    value={settlementAmount}
+                    onChangeText={
+                        setSettlementAmount
+                    }
+                    style={{
+                        borderWidth: 1,
+                        borderColor: "gray",
+                        padding: 14,
+                        borderRadius: 12,
+                        marginTop: 16,
+                        marginBottom: 16,
+                        color: "white",
+                    }}
+                />
+
+                <Button
+                    title="Settle Up"
+                    onPress={handleSettleUp}
+                />
+            </View>
+            {editingExpenseId && (
+                <View
+                    style={{
+                        marginBottom: 32,
+                    }}
+                >
+                    <Text
+                        style={{
+                            color: "white",
+                            fontSize: 20,
+                            fontWeight: "bold",
+                            marginBottom: 12,
+                        }}
+                    >
+                        Edit Expense
+                    </Text>
+
+                    <TextInput
+                        placeholder="Title"
+                        placeholderTextColor="gray"
+                        value={editingTitle}
+                        onChangeText={
+                            setEditingTitle
+                        }
+                        style={{
+                            borderWidth: 1,
+                            borderColor: "gray",
+                            padding: 14,
+                            borderRadius: 12,
+                            marginBottom: 16,
+                            color: "white",
+                        }}
+                    />
+
+                    <TextInput
+                        placeholder="Amount"
+                        placeholderTextColor="gray"
+                        keyboardType="numeric"
+                        value={editingAmount}
+                        onChangeText={
+                            setEditingAmount
+                        }
+                        style={{
+                            borderWidth: 1,
+                            borderColor: "gray",
+                            padding: 14,
+                            borderRadius: 12,
+                            marginBottom: 16,
+                            color: "white",
+                        }}
+                    />
+
+                    <Button
+                        title="Save Changes"
+                        onPress={
+                            handleEditExpense
+                        }
+                    />
+                </View>
+            )}
             <View>
                 <Text
                     style={{
@@ -576,6 +1016,41 @@ export default function GroupScreen({
                                 Paid by{" "}
                                 {payer?.email}
                             </Text>
+
+                            {item.paid_by ===
+                                currentUserId && (
+                                    <View
+                                        style={{
+                                            marginTop: 12,
+                                        }}
+                                    >
+                                        <Button
+                                            title="Delete"
+                                            color="red"
+                                            onPress={() =>
+                                                handleDeleteExpense(
+                                                    item.id
+                                                )
+                                            }
+                                        />
+                                        <Button
+                                            title="Edit"
+                                            onPress={() => {
+                                                setEditingExpenseId(
+                                                    item.id
+                                                );
+
+                                                setEditingTitle(
+                                                    item.title
+                                                );
+
+                                                setEditingAmount(
+                                                    String(item.amount)
+                                                );
+                                            }}
+                                        />
+                                    </View>
+                                )}
                         </View>
                     );
                 })}
